@@ -17,6 +17,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "quirc_internal.h"
+#include "py/mpstate.h"
 
 const char *quirc_version(void)
 {
@@ -25,7 +26,7 @@ const char *quirc_version(void)
 
 struct quirc *quirc_new(void)
 {
-	struct quirc *q = malloc(sizeof(*q));
+	struct quirc *q = m_malloc(sizeof(*q));
 
 	if (!q)
 		return NULL;
@@ -36,13 +37,13 @@ struct quirc *quirc_new(void)
 
 void quirc_destroy(struct quirc *q)
 {
-	free(q->image);
+	m_free(q->image);
 	/* q->pixels may alias q->image when their type representation is of the
 	   same size, so we need to be careful here to avoid a double free */
 	if (!QUIRC_PIXEL_ALIAS_IMAGE)
-		free(q->pixels);
-	free(q->flood_fill_vars);
-	free(q);
+		m_free(q->pixels);
+	m_free(q->flood_fill_vars);
+	m_free(q);
 }
 
 int quirc_resize(struct quirc *q, int w, int h)
@@ -66,7 +67,9 @@ int quirc_resize(struct quirc *q, int w, int h)
 	 * alloc a new buffer for q->image. We avoid realloc(3) because we want
 	 * on failure to be leave `q` in a consistant, unmodified state.
 	 */
-	image = calloc(w, h);
+	image = m_malloc(w);
+	memset(image, 0, h);
+
 	if (!image)
 		goto fail;
 
@@ -85,7 +88,8 @@ int quirc_resize(struct quirc *q, int w, int h)
 
 	/* alloc a new buffer for q->pixels if needed */
 	if (!QUIRC_PIXEL_ALIAS_IMAGE) {
-		pixels = calloc(newdim, sizeof(quirc_pixel_t));
+		pixels = m_malloc(newdim);
+		memset(pixels, 0, sizeof(quirc_pixel_t));
 		if (!pixels)
 			goto fail;
 	}
@@ -113,29 +117,29 @@ int quirc_resize(struct quirc *q, int w, int h)
 	if (vars_byte_size / sizeof(*vars) != num_vars) {
 		goto fail; /* size_t overflow */
 	}
-	vars = malloc(vars_byte_size);
+	vars = m_malloc(vars_byte_size);
 	if (!vars)
 		goto fail;
 
 	/* alloc succeeded, update `q` with the new size and buffers */
 	q->w = w;
 	q->h = h;
-	free(q->image);
+	m_free(q->image);
 	q->image = image;
 	if (!QUIRC_PIXEL_ALIAS_IMAGE) {
-		free(q->pixels);
+		m_free(q->pixels);
 		q->pixels = pixels;
 	}
-	free(q->flood_fill_vars);
+	m_free(q->flood_fill_vars);
 	q->flood_fill_vars = vars;
 	q->num_flood_fill_vars = num_vars;
 
 	return 0;
 	/* NOTREACHED */
 fail:
-	free(image);
-	free(pixels);
-	free(vars);
+	m_free(image);
+	m_free(pixels);
+	m_free(vars);
 
 	return -1;
 }
